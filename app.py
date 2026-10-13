@@ -1,10 +1,14 @@
 """
-PayPal LXNORO Agent - AI Shopping Assistant (Refined Professional UI)
+PayPal LXNORO Agent - AI Shopping Assistant (Refined Professional UI + Channel3 Integration)
 Built for PayPal AI Hackathon 2026.
-Customer-facing shopping assistant UI with isolated demo data and transparent integration status.
+Customer-facing shopping assistant UI integrating live Channel3 product search with graceful fallback.
 """
 
 import streamlit as st
+from dotenv import load_dotenv
+from channel3_client import search_products
+
+load_dotenv()
 
 # Page configuration
 st.set_page_config(
@@ -177,7 +181,7 @@ st.markdown(
 )
 
 
-# --- 1. Isolated Demo Product Data Structure & Retrieval ---
+# --- 1. Isolated Demo Product Data Structure & Retrieval (Fallback) ---
 def get_demo_products() -> list:
     """Returns structured illustrative sample product data separated from UI rendering logic."""
     return [
@@ -293,7 +297,7 @@ st.markdown(
             <span class="stage-pill stage-active">1. Request</span>
             <span class="stage-pill stage-active">2. Budget</span>
             <span class="stage-pill stage-active">3. Preferences</span>
-            <span class="stage-pill stage-pending">4. Catalog Search</span>
+            <span class="stage-pill stage-active">4. Catalog Search</span>
             <span class="stage-pill stage-pending">5. Comparison</span>
             <span class="stage-pill stage-pending">6. Secure Checkout</span>
             <span class="stage-pill stage-pending">7. Verification</span>
@@ -362,69 +366,128 @@ if find_clicked:
 if st.session_state.search_submitted:
     st.markdown("---")
     
-    # Explicit disclosure that products are fixed illustrative sample data
-    st.markdown(
-        """
-        <div class="illustrative-banner">
-            <b>Illustrative Sample Data:</b> The items below are fixed sample products for interface demonstration purposes. They are not dynamically retrieved or semantically matched against your specific search request. Live catalog search will be connected in a future release.
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # Attempt live Channel3 API search
+    api_result = search_products(
+        query=user_query,
+        min_price=float(min_price),
+        max_price=float(max_price),
+        limit=10,
     )
 
-    st.markdown("#### Curated Sample Recommendations")
-    
-    demo_products = get_demo_products()
-    filtered_products = [
-        p for p in demo_products if min_price <= p["price"] <= max_price
-    ]
+    is_live_catalog = False
+    if api_result["success"]:
+        is_live_catalog = True
+        # Live Channel3 Results Banner
+        st.markdown(
+            """
+            <div style="background-color: #ECFDF5; border: 1px solid #10B981; color: #065F46; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.5;">
+                <b>Live Channel3 Search Results:</b> Showing products retrieved dynamically from the live Channel3 catalog matching your search request and budget.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("#### Curated Recommendations (Live Catalog)")
+        
+        raw_live_products = api_result.get("products", [])
+        filtered_live = []
+        for p in raw_live_products:
+            p_price = p.get("price")
+            try:
+                numeric_price = float(p_price)
+            except (TypeError, ValueError):
+                continue
+            if float(min_price) <= numeric_price <= float(max_price):
+                p["price"] = numeric_price
+                filtered_live.append(p)
+        display_products = filtered_live
+    else:
+        # Graceful Fallback to Illustrative Demo Data (only when live API call fails or is unconfigured)
+        error_msg = api_result.get("error", "API unavailable")
+        if api_result.get("source") != "unconfigured":
+            st.warning(f"Live catalog search unavailable ({error_msg}). Showing illustrative sample data as a fallback.")
+        
+        st.markdown(
+            """
+            <div class="illustrative-banner">
+                <b>Illustrative Sample Data (Fallback):</b> The items below are fixed sample products because live catalog search is currently unavailable or unconfigured. They are not dynamically retrieved or matched against your specific search request.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("#### Curated Sample Recommendations")
+        demo_products = get_demo_products()
+        display_products = [
+            p for p in demo_products if min_price <= p["price"] <= max_price
+        ]
 
-    # State consistency: clear selected product if no longer in filtered results
+    # State consistency: clear selected product if no longer in filtered/displayed results
     if st.session_state.selected_product_id:
-        if not any(p["id"] == st.session_state.selected_product_id for p in filtered_products):
+        if not any(p["id"] == st.session_state.selected_product_id for p in display_products):
             st.session_state.selected_product_id = None
 
-    if not filtered_products:
-        st.info(
-            f"No sample products found within the specified budget range ({currency_code} {min_price} – {max_price}). Please adjust your budget to view available sample items."
-        )
+    if not display_products:
+        if is_live_catalog:
+            st.info(
+                f"No live Channel3 products match your selected budget range ({currency_code} {min_price} – {max_price}). Please try adjusting your budget or search query."
+            )
+        else:
+            st.info(
+                f"No sample products found within the specified budget range ({currency_code} {min_price} – {max_price}). Please adjust your budget to view available items."
+            )
     else:
         cols = st.columns(2)
-        for idx, product in enumerate(filtered_products):
+        for idx, product in enumerate(display_products):
             col = cols[idx % 2]
             with col:
+                rating = product.get("rating")
+                reviews_count = product.get("reviews_count")
+                rating_display = f"★ {rating}" if rating else ""
+                reviews_display = f"({reviews_count} ratings)" if reviews_count else ""
+                stats_str = f"{rating_display} {reviews_display}".strip()
+                if not stats_str:
+                    stats_str = "Verified Catalog Item"
+
                 st.markdown(
                     f"""
                     <div class="product-card">
-                        <div style="font-size: 1.75rem; margin-bottom: 0.35rem;">{product['emoji']}</div>
+                        <div style="font-size: 1.75rem; margin-bottom: 0.35rem;">{product.get('emoji', '🛍️')}</div>
                         <div class="product-brand">{product['brand']} • {product['condition']}</div>
                         <div class="product-name">{product['title']}</div>
                         <div class="product-price">{currency_code} {product['price']:.2f}</div>
                         <div style="font-size: 0.8rem; color: #64748B; margin-bottom: 0.75rem;">
-                            ★ {product['rating']} ({product['reviews_count']} ratings)
+                            {stats_str}
                         </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-                for spec_key, spec_val in product["specs"].items():
+                specs = product.get("specs", {})
+                if isinstance(specs, dict):
+                    for spec_key, spec_val in specs.items():
+                        st.markdown(
+                            f"<div class='spec-item'><b>{spec_key}:</b> {spec_val}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                pros = product.get("pros")
+                cons = product.get("cons")
+                if pros or cons:
+                    pros_text = pros if pros else "Curated catalog match."
+                    cons_text = f"Consideration: {cons}" if cons else ""
                     st.markdown(
-                        f"<div class='spec-item'><b>{spec_key}:</b> {spec_val}</div>",
+                        f"""
+                        <div class="tradeoff-box">
+                            <b>Key Advantage:</b> {pros_text}<br/>
+                            {f'<span style="color: #64748B;">{cons_text}</span>' if cons_text else ''}
+                        </div>
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
+                else:
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-                st.markdown(
-                    f"""
-                        <div class="tradeoff-box">
-                            <b>Key Advantage:</b> {product['pros']}<br/>
-                            <span style="color: #64748B;">Consideration: {product['cons']}</span>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                # Renamed button to "Review Selection" (review-only interaction)
+                # Review Selection Button
                 btn_key = f"select_{product['id']}"
                 if st.button("Review Selection", key=btn_key, use_container_width=True):
                     st.session_state.selected_product_id = product["id"]
@@ -434,7 +497,7 @@ if st.session_state.search_submitted:
         # --- Selection Review & Integration Status Section ---
         if st.session_state.selected_product_id:
             selected_prod = next(
-                (p for p in filtered_products if p["id"] == st.session_state.selected_product_id),
+                (p for p in display_products if p["id"] == st.session_state.selected_product_id),
                 None,
             )
             if selected_prod:
@@ -444,7 +507,7 @@ if st.session_state.search_submitted:
                     f"""
                     <div class="checkout-preview-box">
                         <div style="font-weight: 600; color: #0A192F; margin-bottom: 0.35rem;">
-                            Selected Sample Item: {selected_prod['brand']} - {selected_prod['title']} ({currency_code} {selected_prod['price']:.2f})
+                            Selected Item: {selected_prod['brand']} - {selected_prod['title']} ({currency_code} {selected_prod['price']:.2f})
                         </div>
                         <div style="font-size: 0.875rem; color: #475569; line-height: 1.5;">
                             <b>PayPal Integration Status:</b> Payment processing is not implemented in this interface milestone. No transaction will be processed, and no order confirmation or receipt can be generated.
