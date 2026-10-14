@@ -1,33 +1,41 @@
-﻿# PayPal LXNORO Agent
+# PayPal LXNORO Agent
 
 An AI-powered shopping assistant that helps users discover products, compare options, approve a selection, and complete checkout through PayPal.
 
-## Planned Technology Stack
+## Technology Stack
 
 - Python 3.11
 - Streamlit
-- Anthropic Claude API for in-product agent reasoning
-- Channel3 API for product discovery
-- PayPal Sandbox for payment testing
+- Google Gemini Flash-Lite (`gemini-3.1-flash-lite` via official `google-genai` SDK) for natural-language query enhancement
+- Channel3 API (`https://api.trychannel3.com/v1/search`) for product catalog discovery
+- PayPal Sandbox API (`https://api-m.sandbox.paypal.com`) for test payment checkout flow implementation
 - Git and GitHub for version control
 
 ## Shopping Workflow
 
 1. Capture the user's natural-language shopping request.
-2. Collect the target price range.
-3. Collect product specifications and preferences.
-4. Search and filter the product catalog.
-5. Present the top 10 matching products for manual approval.
-6. Complete checkout through the official PayPal payment flow.
-7. Verify payment and send a purchase confirmation.
+2. Enhance and optimize the search query using Google Gemini Flash-Lite (with automatic fallback to the raw query if unconfigured or unavailable).
+3. Collect the target price range and advanced preferences.
+4. Search and filter the Channel3 product catalog.
+5. Present matching products for manual selection review.
+6. Initiate secure checkout through the official PayPal Sandbox payment flow.
+7. Support server-side order creation, status verification, and order capture against PayPal Sandbox endpoints.
 
 ## Development Status
 
-Initial workspace setup. Integrations and application features are not implemented yet.
+Gemini natural-language query enhancement and PayPal Sandbox checkout integration have been implemented in the codebase, but end-to-end live testing has not yet been executed in this environment.
 
 ## Local Setup
 
-Create and activate a Python virtual environment, install the dependencies, configure local environment variables, and run the Streamlit application after its entry point has been implemented.
+1. Create and activate a Python virtual environment.
+2. Install dependencies: `pip install -r requirements.txt`.
+3. Configure environment variables in `.env` (using `.env.example` as a template):
+   - `GEMINI_API_KEY`
+   - `CHANNEL3_API_KEY`
+   - `PAYPAL_CLIENT_ID`
+   - `PAYPAL_CLIENT_SECRET`
+   - `PAYPAL_ENVIRONMENT=sandbox`
+4. Run the Streamlit application: `streamlit run app.py`.
 
 ## Security
 

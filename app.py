@@ -10,6 +10,7 @@ from channel3_client import search_products
 import os
 import paypal_client
 from decimal import Decimal
+from gemini_client import enhance_search_query_with_gemini
 
 load_dotenv()
 
@@ -371,8 +372,9 @@ if find_clicked:
         st.session_state.search_submitted = False
     else:
         st.session_state.search_submitted = True
+        enhanced_query = enhance_search_query_with_gemini(user_query)
         st.session_state.cached_api_result = search_products(
-            query=user_query,
+            query=enhanced_query,
             min_price=float(min_price),
             max_price=float(max_price),
             limit=10,
