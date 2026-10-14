@@ -269,6 +269,14 @@ if "search_submitted" not in st.session_state:
     st.session_state.search_submitted = False
 if "selected_product_id" not in st.session_state:
     st.session_state.selected_product_id = None
+if "cached_api_result" not in st.session_state:
+    st.session_state.cached_api_result = None
+if "submitted_query" not in st.session_state:
+    st.session_state.submitted_query = ""
+if "submitted_min_price" not in st.session_state:
+    st.session_state.submitted_min_price = 0.0
+if "submitted_max_price" not in st.session_state:
+    st.session_state.submitted_max_price = 0.0
 
 
 # --- Hero Header ---
@@ -360,19 +368,28 @@ if find_clicked:
         st.session_state.search_submitted = False
     else:
         st.session_state.search_submitted = True
+        st.session_state.cached_api_result = search_products(
+            query=user_query,
+            min_price=float(min_price),
+            max_price=float(max_price),
+            limit=10,
+        )
+        st.session_state.submitted_query = user_query
+        st.session_state.submitted_min_price = float(min_price)
+        st.session_state.submitted_max_price = float(max_price)
 
 
 # --- Results Section ---
 if st.session_state.search_submitted:
     st.markdown("---")
     
-    # Attempt live Channel3 API search
-    api_result = search_products(
-        query=user_query,
-        min_price=float(min_price),
-        max_price=float(max_price),
-        limit=10,
-    )
+    api_result = st.session_state.get("cached_api_result")
+    if api_result is None:
+        st.error("Search results expired or not found. Please click 'Find My Products' again.")
+        st.stop()
+
+    active_min = st.session_state.get("submitted_min_price", float(min_price))
+    active_max = st.session_state.get("submitted_max_price", float(max_price))
 
     is_live_catalog = False
     if api_result["success"]:
@@ -396,7 +413,7 @@ if st.session_state.search_submitted:
                 numeric_price = float(p_price)
             except (TypeError, ValueError):
                 continue
-            if float(min_price) <= numeric_price <= float(max_price):
+            if active_min <= numeric_price <= active_max:
                 p["price"] = numeric_price
                 filtered_live.append(p)
         display_products = filtered_live
@@ -417,7 +434,7 @@ if st.session_state.search_submitted:
         st.markdown("#### Curated Sample Recommendations")
         demo_products = get_demo_products()
         display_products = [
-            p for p in demo_products if min_price <= p["price"] <= max_price
+            p for p in demo_products if active_min <= p["price"] <= active_max
         ]
 
     # State consistency: clear selected product if no longer in filtered/displayed results
@@ -428,11 +445,11 @@ if st.session_state.search_submitted:
     if not display_products:
         if is_live_catalog:
             st.info(
-                f"No live Channel3 products match your selected budget range ({currency_code} {min_price} – {max_price}). Please try adjusting your budget or search query."
+                f"No live Channel3 products match your selected budget range ({currency_code} {active_min:.0f} – {active_max:.0f}). Please try adjusting your budget or search query."
             )
         else:
             st.info(
-                f"No sample products found within the specified budget range ({currency_code} {min_price} – {max_price}). Please adjust your budget to view available items."
+                f"No sample products found within the specified budget range ({currency_code} {active_min:.0f} – {active_max:.0f}). Please adjust your budget to view available items."
             )
     else:
         cols = st.columns(2)
