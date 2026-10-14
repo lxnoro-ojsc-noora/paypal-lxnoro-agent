@@ -7,6 +7,9 @@ Customer-facing shopping assistant UI integrating live Channel3 product search w
 import streamlit as st
 from dotenv import load_dotenv
 from channel3_client import search_products
+import os
+import paypal_client
+from decimal import Decimal
 
 load_dotenv()
 
@@ -511,7 +514,7 @@ if st.session_state.search_submitted:
 
                 st.markdown("<div style='margin-bottom: 0.75rem;'></div>", unsafe_allow_html=True)
 
-        # --- Selection Review & Integration Status Section ---
+        # --- Selection Review & Sandbox Integration Status Section ---
         if st.session_state.selected_product_id:
             selected_prod = next(
                 (p for p in display_products if p["id"] == st.session_state.selected_product_id),
@@ -519,20 +522,135 @@ if st.session_state.search_submitted:
             )
             if selected_prod:
                 st.markdown("---")
-                st.markdown("#### Selection Review & Integration Status")
-                st.markdown(
-                    f"""
-                    <div class="checkout-preview-box">
-                        <div style="font-weight: 600; color: #0A192F; margin-bottom: 0.35rem;">
-                            Selected Item: {selected_prod['brand']} - {selected_prod['title']} ({currency_code} {selected_prod['price']:.2f})
-                        </div>
-                        <div style="font-size: 0.875rem; color: #475569; line-height: 1.5;">
-                            <b>PayPal Integration Status:</b> Payment processing is not implemented in this interface milestone. No transaction will be processed, and no order confirmation or receipt can be generated.
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+                st.markdown("#### Selection Review & PayPal Sandbox Checkout")
+
+                # Validate product fields strictly
+                p_id = selected_prod.get("id")
+                p_price = selected_prod.get("price")
+                p_curr = selected_prod.get("currency")
+                p_title = selected_prod.get("title", "Product")
+                p_brand = selected_prod.get("brand", "Brand")
+
+                # Check environment & credentials
+                env_ok = (
+                    os.getenv("PAYPAL_ENVIRONMENT", "").strip().lower() == "sandbox"
+                    and bool(os.getenv("PAYPAL_CLIENT_ID", "").strip())
+                    and bool(os.getenv("PAYPAL_CLIENT_SECRET", "").strip())
                 )
+
+                # Reset order state if selected product changed
+                if st.session_state.get("paypal_selected_id") != p_id:
+                    st.session_state.paypal_selected_id = p_id
+                    st.session_state.paypal_order_id = None
+                    st.session_state.paypal_approval_url = None
+                    st.session_state.paypal_order_status = None
+                    st.session_state.paypal_capture_data = None
+                    st.session_state.paypal_error_msg = None
+
+                # Validation checks for checkout eligibility
+                validation_error = None
+                dec_price = None
+                try:
+                    if p_price is not None:
+                        dec_price = Decimal(str(p_price))
+                except Exception:
+                    dec_price = None
+
+                if not env_ok:
+                    validation_error = "PayPal Sandbox environment or credentials are not configured in environment variables. Checkout is disabled."
+                elif not p_id or not isinstance(p_id, str) or p_id.lower() in ("ch3-unknown", "unknown", "none", "null"):
+                    validation_error = "Checkout blocked: Selected product lacks a stable verified product identifier."
+                elif dec_price is None or not dec_price.is_finite() or dec_price <= Decimal("0"):
+                    validation_error = "Checkout blocked: Selected product lacks a valid positive numeric price."
+                elif not p_curr or not isinstance(p_curr, str) or p_curr.strip().upper() not in paypal_client.ALLOWED_CURRENCIES:
+                    validation_error = "Checkout blocked: Selected product currency is missing or not a verified ISO 4217 code."
+
+                if validation_error:
+                    st.error(f"Selected Item: {p_brand} - {p_title}\n\nSandbox Checkout Notice: {validation_error}")
+                else:
+                    st.info(f"Selected Item: {p_brand} - {p_title} ({p_curr.upper()} {dec_price:.2f})\n\nPayPal Sandbox Integration: Ready for secure Sandbox order creation and server-side capture verification.")
+
+                    # Order creation and payment flow controls
+                    if not st.session_state.get("paypal_order_id"):
+                        if st.button("Initialize PayPal Sandbox Order", type="primary", use_container_width=True):
+                            order_id, approval_url, err = paypal_client.create_paypal_order(
+                                item_title=p_title,
+                                price=dec_price,
+                                currency=p_curr,
+                                product_id=p_id
+                            )
+                            if order_id and approval_url:
+                                st.session_state.paypal_order_id = order_id
+                                st.session_state.paypal_approval_url = approval_url
+                                st.session_state.paypal_order_status = "CREATED"
+                                st.session_state.paypal_error_msg = None
+                                st.rerun()
+                            else:
+                                st.session_state.paypal_error_msg = err or "Failed to create PayPal Sandbox order."
+                                st.error(st.session_state.paypal_error_msg)
+
+                    if st.session_state.get("paypal_error_msg"):
+                        st.error(st.session_state.paypal_error_msg)
+
+                    # If order exists, manage approval and capture
+                    order_id = st.session_state.get("paypal_order_id")
+                    approval_url = st.session_state.get("paypal_approval_url")
+                    if order_id and approval_url:
+                        st.write(f"**Sandbox Order ID:** `{order_id}`")
+                        st.info("1. Approve Payment in PayPal Sandbox: Click the button below to log in and approve the payment in test mode.")
+                        st.link_button("Open PayPal Sandbox Approval Page ↗", approval_url)
+
+                        col_verify, col_capture = st.columns(2)
+                        with col_verify:
+                            if st.button("Verify Order Approval Status", use_container_width=True):
+                                is_ok, order_data, v_err = paypal_client.verify_order_status(order_id)
+                                if is_ok and order_data:
+                                    status = order_data.get("status")
+                                    st.session_state.paypal_order_status = status
+                                    st.success(f"Server-side order status verified: {status}")
+                                    st.rerun()
+                                else:
+                                    st.error(v_err or "Order verification failed.")
+
+                        with col_capture:
+                            if st.button("Complete Payment (Capture Order)", type="primary", use_container_width=True):
+                                v_ok, v_data, v_err = paypal_client.verify_order_status(order_id)
+                                if not v_ok or not v_data:
+                                    st.error(v_err or "Server-side order verification failed prior to capture.")
+                                else:
+                                    fresh_status = v_data.get("status")
+                                    st.session_state.paypal_order_status = fresh_status
+                                    if fresh_status == "COMPLETED" and v_data.get("id") == order_id:
+                                        v_ok_check, v_data_check, _ = paypal_client.verify_order_status(order_id)
+                                        if v_ok_check and v_data_check and v_data_check.get("status") == "COMPLETED" and v_data_check.get("id") == order_id:
+                                            st.session_state.paypal_order_status = "COMPLETED"
+                                            st.session_state.paypal_capture_data = v_data_check
+                                            st.success("Order is already completed and verified.")
+                                            st.rerun()
+                                        else:
+                                            st.error("Order completion verification failed.")
+                                    elif fresh_status == "APPROVED":
+                                        success, cap_data, c_err = paypal_client.capture_paypal_order(order_id)
+                                        v_ok_cap, v_data_cap, _ = paypal_client.verify_order_status(order_id)
+                                        if success and v_ok_cap and v_data_cap and v_data_cap.get("status") == "COMPLETED" and v_data_cap.get("id") == order_id:
+                                            st.session_state.paypal_order_status = "COMPLETED"
+                                            st.session_state.paypal_capture_data = v_data_cap
+                                            st.success("Payment successfully captured and verified via PayPal Sandbox!")
+                                            st.rerun()
+                                        else:
+                                            st.error(c_err or "Order capture verification failed.")
+                                    else:
+                                        st.error(f"Cannot capture order with status '{fresh_status}'. Order must be APPROVED.")
+
+                        # Show success receipt using ordinary Streamlit components when COMPLETED
+                        if st.session_state.get("paypal_order_status") == "COMPLETED":
+                            cap_info = st.session_state.get("paypal_capture_data", {})
+                            if cap_info.get("id") == order_id and cap_info.get("status") == "COMPLETED":
+                                st.success("Payment Successful & Verified!")
+                                st.write(f"**Order ID:** `{order_id}`")
+                                st.write("**Status:** COMPLETED (Sandbox Verified)")
+                                st.write(f"**Item:** {p_title}")
+                                st.write(f"**Amount:** {p_curr.upper()} {dec_price:.2f}")
 else:
     # Professional Empty State
     st.markdown(
