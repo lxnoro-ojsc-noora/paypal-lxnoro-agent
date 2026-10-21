@@ -29,13 +29,13 @@ def _validate_environment() -> bool:
     if env != "sandbox":
         logger.error("Security violation: PAYPAL_ENVIRONMENT must be strictly set to 'sandbox'. Live mode is disabled.")
         return False
-    
+
     client_id = os.getenv("PAYPAL_CLIENT_ID", "").strip()
     client_secret = os.getenv("PAYPAL_CLIENT_SECRET", "").strip()
     if not client_id or not client_secret:
         logger.error("Missing required PayPal Sandbox credentials (PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET).")
         return False
-    
+
     return True
 
 
@@ -67,7 +67,7 @@ def _get_access_token() -> Optional[str]:
         logger.error("PayPal access token request encountered a network or protocol error.")
     except Exception:
         logger.error("PayPal access token request encountered an unexpected error.")
-    
+
     return None
 
 
@@ -81,6 +81,19 @@ def _validate_approval_url(url: str) -> bool:
             return False
         hostname = (parsed.hostname or "").lower()
         if not any(hostname == domain or hostname.endswith("." + domain) for domain in ALLOWED_APPROVAL_DOMAINS):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def _validate_return_cancel_url(url: str) -> bool:
+    """Validates that return/cancel URL scheme is https and has a valid hostname."""
+    if not isinstance(url, str) or not url.strip():
+        return False
+    try:
+        parsed = urlparse(url.strip())
+        if parsed.scheme.lower() != "https" or not parsed.hostname:
             return False
         return True
     except Exception:
@@ -124,6 +137,13 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
     if not isinstance(item_title, str) or not item_title.strip():
         item_title = "Curated Product"
 
+    return_url = os.getenv("PAYPAL_RETURN_URL", "").strip()
+    if not return_url or not _validate_return_cancel_url(return_url):
+        return_url = "https://example.com/return"
+    cancel_url = os.getenv("PAYPAL_CANCEL_URL", "").strip()
+    if not cancel_url or not _validate_return_cancel_url(cancel_url):
+        cancel_url = "https://example.com/cancel"
+
     token = _get_access_token()
     if not token:
         return None, None, "Failed to authenticate with PayPal Sandbox."
@@ -133,7 +153,7 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    
+
     formatted_amount = f"{dec_price:.2f}"
     payload = {
         "intent": "CAPTURE",
@@ -146,7 +166,12 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
                     "value": formatted_amount
                 }
             }
-        ]
+        ],
+        "application_context": {
+            "return_url": return_url,
+            "cancel_url": cancel_url,
+            "user_action": "PAY_NOW"
+        }
     }
 
     try:
@@ -155,7 +180,7 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
             data = response.json()
             order_id = data.get("id")
             approval_url = None
-            
+
             links = data.get("links", [])
             for link in links:
                 if isinstance(link, dict) and link.get("rel") in ("approve", "payer-action"):
@@ -166,12 +191,12 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
 
             if isinstance(order_id, str) and order_id.strip() and isinstance(approval_url, str) and approval_url:
                 return order_id.strip(), approval_url, None
-            
+
             return None, None, "PayPal order response missing valid ID or verified approval URL."
-            
+
         logger.error("PayPal order creation failed with HTTP status: %d", response.status_code)
         return None, None, f"PayPal order creation failed (HTTP {response.status_code})."
-        
+
     except requests.exceptions.Timeout:
         logger.error("PayPal order creation timed out.")
         return None, None, "PayPal order creation request timed out."
@@ -209,13 +234,13 @@ def verify_order_status(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]], 
         if response.status_code == 200:
             data = response.json()
             status = data.get("status")
-            if data.get("id") == clean_order_id and status in ("APPROVED", "COMPLETED"):
+            if data.get("id") == clean_order_id and status in ("CREATED", "APPROVED", "COMPLETED"):
                 return True, data, None
-            return False, data, f"Order status is '{status}', expected 'APPROVED' or 'COMPLETED'."
-            
+            return False, data, f"Order status is '{status}', expected 'CREATED', 'APPROVED', or 'COMPLETED'."
+
         logger.error("PayPal order verification failed with HTTP status: %d", response.status_code)
         return False, None, f"Order verification failed (HTTP {response.status_code})."
-        
+
     except requests.exceptions.Timeout:
         logger.error("PayPal order verification timed out.")
         return False, None, "Order verification timed out."
@@ -268,7 +293,7 @@ def capture_paypal_order(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]],
 
     try:
         response = requests.post(capture_url, headers=headers, json={}, timeout=TIMEOUT_SECONDS)
-        
+
         # Handle 422 or successful capture codes by verifying server-side state
         if response.status_code in (200, 201, 422):
             re_valid, re_data, _ = verify_order_status(clean_order_id)
@@ -279,7 +304,7 @@ def capture_paypal_order(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]],
                 and re_data.get("status") == "COMPLETED"
             ):
                 return True, re_data, None
-            
+
             if response.status_code in (200, 201):
                 data = response.json()
                 if (
@@ -291,7 +316,7 @@ def capture_paypal_order(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]],
 
         logger.error("PayPal order capture failed or unverified with HTTP status: %d", response.status_code)
         return False, None, f"Order capture verification failed (HTTP {response.status_code})."
-        
+
     except requests.exceptions.Timeout:
         logger.error("PayPal order capture timed out.")
         return False, None, "Order capture timed out."

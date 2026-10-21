@@ -48,7 +48,7 @@ st.markdown(
         color: #0A192F;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    
+
     /* Header Container */
     .hero-header {
         background: linear-gradient(135deg, #0A192F 0%, #1E3A8A 100%);
@@ -403,7 +403,7 @@ if find_clicked:
 # --- Results Section ---
 if st.session_state.search_submitted:
     st.markdown("---")
-    
+
     api_result = st.session_state.get("cached_api_result")
     if api_result is None:
         st.error("Search results expired or not found. Please click 'Find My Products' again.")
@@ -425,7 +425,7 @@ if st.session_state.search_submitted:
             unsafe_allow_html=True,
         )
         st.markdown("#### Curated Recommendations (Live Catalog)")
-        
+
         raw_live_products = api_result.get("products", [])
         filtered_live = []
         for p in raw_live_products:
@@ -443,7 +443,7 @@ if st.session_state.search_submitted:
         error_msg = api_result.get("error", "API unavailable")
         if api_result.get("source") != "unconfigured":
             st.warning(f"Live catalog search unavailable ({error_msg}). Showing illustrative sample data as a fallback.")
-        
+
         st.markdown(
             """
             <div class="illustrative-banner">
@@ -485,16 +485,24 @@ if st.session_state.search_submitted:
                 if not stats_str:
                     stats_str = "Verified Catalog Item"
 
+                st.markdown('<div class="product-card">', unsafe_allow_html=True)
+                img_url = product.get("image_url")
+                if img_url and isinstance(img_url, str) and img_url.strip():
+                    try:
+                        st.image(img_url.strip(), use_container_width=True)
+                    except Exception:
+                        st.markdown(f"<div style='font-size: 1.75rem; margin-bottom: 0.35rem;'>{product.get('emoji', '🛍️')}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='font-size: 1.75rem; margin-bottom: 0.35rem;'>{product.get('emoji', '🛍️')}</div>", unsafe_allow_html=True)
+
                 st.markdown(
                     f"""
-                    <div class="product-card">
-                        <div style="font-size: 1.75rem; margin-bottom: 0.35rem;">{product.get('emoji', '🛍️')}</div>
-                        <div class="product-brand">{product['brand']} • {product['condition']}</div>
-                        <div class="product-name">{product['title']}</div>
-                        <div class="product-price">{currency_code} {product['price']:.2f}</div>
-                        <div style="font-size: 0.8rem; color: #64748B; margin-bottom: 0.75rem;">
-                            {stats_str}
-                        </div>
+                    <div class="product-brand">{product['brand']} • {product['condition']}</div>
+                    <div class="product-name">{product['title']}</div>
+                    <div class="product-price">{currency_code} {product['price']:.2f}</div>
+                    <div style="font-size: 0.8rem; color: #64748B; margin-bottom: 0.75rem;">
+                        {stats_str}
+                    </div>
                     """,
                     unsafe_allow_html=True,
                 )

@@ -83,11 +83,17 @@ def search_products(
                 offers = item.get("offers", [])
                 price = _parse_price(item.get("price", 0.0))
                 currency = str(item.get("currency", "USD"))
-                
+
                 if isinstance(offers, list) and len(offers) > 0 and isinstance(offers[0], dict):
                     primary_offer = offers[0]
                     price = _parse_price(primary_offer.get("price", primary_offer.get("cost", price)))
                     currency = str(primary_offer.get("currency", currency))
+
+                image_url = item.get("image", item.get("image_url", item.get("imageUrl", item.get("thumbnail", item.get("photo", item.get("picture", ""))))))
+                if isinstance(image_url, list) and len(image_url) > 0:
+                    image_url = str(image_url[0])
+                elif not isinstance(image_url, str):
+                    image_url = ""
 
                 products.append({
                     "id": str(item.get("id", item.get("product_id", "ch3-unknown"))),
@@ -95,6 +101,7 @@ def search_products(
                     "title": str(item.get("title", item.get("name", "Product"))),
                     "price": price,
                     "currency": currency,
+                    "image_url": image_url.strip(),
                     "condition": str(item.get("condition", "New")),
                     "rating": float(item.get("rating", 0.0)) if item.get("rating") is not None else None,
                     "reviews_count": int(item.get("reviews_count", item.get("reviews", 0))) if item.get("reviews_count") is not None or item.get("reviews") is not None else None,
@@ -125,7 +132,7 @@ def search_products(
         if http_err.response is not None:
             status_code = getattr(http_err.response, "status_code", "unknown")
             reason = getattr(http_err.response, "reason", "")
-        
+
         safe_msg = f"HTTP error {status_code}"
         if reason:
             safe_msg += f" ({reason})"
