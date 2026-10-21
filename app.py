@@ -14,6 +14,22 @@ from gemini_client import enhance_search_query_with_gemini
 
 load_dotenv()
 
+# Bridge Streamlit secrets into os.environ for Streamlit Cloud deployment support
+try:
+    if hasattr(st, "secrets") and st.secrets:
+        for secret_key, secret_val in st.secrets.items():
+            if isinstance(secret_val, str) and secret_key not in os.environ:
+                os.environ[secret_key] = secret_val
+            elif isinstance(secret_val, dict):
+                for sub_k, sub_v in secret_val.items():
+                    full_k = f"{secret_key}_{sub_k}"
+                    if isinstance(sub_v, str) and full_k not in os.environ:
+                        os.environ[full_k] = sub_v
+                    if isinstance(sub_v, str) and sub_k not in os.environ:
+                        os.environ[sub_k] = sub_v
+except Exception:
+    pass
+
 # Page configuration
 st.set_page_config(
     page_title="PayPal LXNORO Agent | AI Shopping Assistant",
