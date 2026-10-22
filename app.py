@@ -18,15 +18,19 @@ load_dotenv()
 try:
     if hasattr(st, "secrets") and st.secrets:
         for secret_key, secret_val in st.secrets.items():
-            if isinstance(secret_val, str) and secret_key not in os.environ:
+            if isinstance(secret_val, str):
                 os.environ[secret_key] = secret_val
+                os.environ[secret_key.upper()] = secret_val
             elif isinstance(secret_val, dict):
                 for sub_k, sub_v in secret_val.items():
-                    full_k = f"{secret_key}_{sub_k}"
-                    if isinstance(sub_v, str) and full_k not in os.environ:
-                        os.environ[full_k] = sub_v
-                    if isinstance(sub_v, str) and sub_k not in os.environ:
+                    if isinstance(sub_v, str):
                         os.environ[sub_k] = sub_v
+                        os.environ[sub_k.upper()] = sub_v
+                        os.environ[f"{secret_key}_{sub_k}"] = sub_v
+                        os.environ[f"{secret_key}_{sub_k}".upper()] = sub_v
+                        if secret_key.lower() == "channel3" and sub_k.lower() in ("api_key", "key"):
+                            os.environ["CHANNEL3_API_KEY"] = sub_v
+                            os.environ["channel3_api_key"] = sub_v
 except Exception:
     pass
 
@@ -297,6 +301,20 @@ if "submitted_min_price" not in st.session_state:
     st.session_state.submitted_min_price = 0.0
 if "submitted_max_price" not in st.session_state:
     st.session_state.submitted_max_price = 0.0
+
+# --- Handle incoming return query parameters from PayPal Sandbox ---
+try:
+    return_token = st.query_params.get("token") or st.query_params.get("orderId")
+    if return_token and isinstance(return_token, str) and return_token.strip():
+        clean_token = return_token.strip()
+        st.session_state.paypal_order_id = clean_token
+        is_v, v_data, _ = paypal_client.verify_order_status(clean_token)
+        if is_v and v_data:
+            st.session_state.paypal_order_status = v_data.get("status")
+            if not st.session_state.get("paypal_approval_url"):
+                st.session_state.paypal_approval_url = f"https://www.sandbox.paypal.com/checkoutnow?token={clean_token}"
+except Exception:
+    pass
 
 
 # --- Hero Header ---
@@ -621,9 +639,18 @@ if st.session_state.search_submitted:
                     # If order exists, manage approval and capture
                     order_id = st.session_state.get("paypal_order_id")
                     approval_url = st.session_state.get("paypal_approval_url")
+                    order_status = st.session_state.get("paypal_order_status", "CREATED")
+
                     if order_id and approval_url:
                         st.write(f"**Sandbox Order ID:** `{order_id}`")
-                        st.info("1. Approve Payment in PayPal Sandbox: Click the button below to log in and approve the payment in test mode.")
+
+                        if order_status == "CREATED":
+                            st.warning("⚠️ **Order Status: CREATED** (Awaiting buyer approval). Please click the link below to log into PayPal Sandbox and approve the order. Once approved, return here and click **Verify Order Approval Status**.")
+                        elif order_status == "APPROVED":
+                            st.success("✅ **Order Status: APPROVED** by buyer! You may now complete and capture the order.")
+                        elif order_status == "COMPLETED":
+                            st.success("🎉 **Order Status: COMPLETED** (Payment captured and verified).")
+
                         st.link_button("Open PayPal Sandbox Approval Page ↗", approval_url)
 
                         col_verify, col_capture = st.columns(2)
@@ -633,7 +660,12 @@ if st.session_state.search_submitted:
                                 if is_ok and order_data:
                                     status = order_data.get("status")
                                     st.session_state.paypal_order_status = status
-                                    st.success(f"Server-side order status verified: {status}")
+                                    if status == "APPROVED":
+                                        st.success("Order is now APPROVED! Ready for capture.")
+                                    elif status == "CREATED":
+                                        st.info("Order is still awaiting approval in PayPal Sandbox.")
+                                    elif status == "COMPLETED":
+                                        st.success("Order is already COMPLETED.")
                                     st.rerun()
                                 else:
                                     st.error(v_err or "Order verification failed.")
@@ -647,14 +679,9 @@ if st.session_state.search_submitted:
                                     fresh_status = v_data.get("status")
                                     st.session_state.paypal_order_status = fresh_status
                                     if fresh_status == "COMPLETED" and v_data.get("id") == order_id:
-                                        v_ok_check, v_data_check, _ = paypal_client.verify_order_status(order_id)
-                                        if v_ok_check and v_data_check and v_data_check.get("status") == "COMPLETED" and v_data_check.get("id") == order_id:
-                                            st.session_state.paypal_order_status = "COMPLETED"
-                                            st.session_state.paypal_capture_data = v_data_check
-                                            st.success("Order is already completed and verified.")
-                                            st.rerun()
-                                        else:
-                                            st.error("Order completion verification failed.")
+                                        st.session_state.paypal_capture_data = v_data
+                                        st.success("Order is already completed and verified.")
+                                        st.rerun()
                                     elif fresh_status == "APPROVED":
                                         success, cap_data, c_err = paypal_client.capture_paypal_order(order_id)
                                         v_ok_cap, v_data_cap, _ = paypal_client.verify_order_status(order_id)
@@ -665,6 +692,8 @@ if st.session_state.search_submitted:
                                             st.rerun()
                                         else:
                                             st.error(c_err or "Order capture verification failed.")
+                                    elif fresh_status == "CREATED":
+                                        st.warning("Cannot capture order: Order is still 'CREATED' (buyer has not approved payment in PayPal Sandbox yet). Please approve the payment via the PayPal link first.")
                                     else:
                                         st.error(f"Cannot capture order with status '{fresh_status}'. Order must be APPROVED.")
 

@@ -40,7 +40,7 @@ def search_products(
     Searches the Channel3 product catalog using the official v1/search endpoint.
     Sends documented query and limit parameters.
     """
-    api_key = os.getenv("CHANNEL3_API_KEY")
+    api_key = os.getenv("CHANNEL3_API_KEY") or os.getenv("channel3_api_key")
     if not api_key or not api_key.strip():
         logger.warning("CHANNEL3_API_KEY is not configured in environment variables.")
         return {
@@ -89,11 +89,18 @@ def search_products(
                     price = _parse_price(primary_offer.get("price", primary_offer.get("cost", price)))
                     currency = str(primary_offer.get("currency", currency))
 
-                image_url = item.get("image", item.get("image_url", item.get("imageUrl", item.get("thumbnail", item.get("photo", item.get("picture", ""))))))
-                if isinstance(image_url, list) and len(image_url) > 0:
-                    image_url = str(image_url[0])
-                elif not isinstance(image_url, str):
-                    image_url = ""
+                img_candidate = item.get("image", item.get("image_url", item.get("imageUrl", item.get("thumbnail", item.get("photo", item.get("picture", item.get("images", "")))))))
+                image_url = ""
+                if isinstance(img_candidate, str):
+                    image_url = img_candidate.strip()
+                elif isinstance(img_candidate, list) and len(img_candidate) > 0:
+                    first = img_candidate[0]
+                    if isinstance(first, str):
+                        image_url = first.strip()
+                    elif isinstance(first, dict):
+                        image_url = str(first.get("url", first.get("src", first.get("image", "")))).strip()
+                elif isinstance(img_candidate, dict):
+                    image_url = str(img_candidate.get("url", img_candidate.get("src", img_candidate.get("image", "")))).strip()
 
                 products.append({
                     "id": str(item.get("id", item.get("product_id", "ch3-unknown"))),
