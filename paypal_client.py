@@ -167,12 +167,16 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
                 }
             }
         ],
-        "application_context": {
-            "return_url": return_url,
-            "cancel_url": cancel_url,
-            "user_action": "PAY_NOW",
-            "landing_page": "LOGIN",
-            "shipping_preference": "NO_SHIPPING"
+        "payment_source": {
+            "paypal": {
+                "experience_context": {
+                    "return_url": return_url,
+                    "cancel_url": cancel_url,
+                    "user_action": "PAY_NOW",
+                    "landing_page": "LOGIN",
+                    "shipping_preference": "NO_SHIPPING"
+                }
+            }
         }
     }
 
