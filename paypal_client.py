@@ -188,12 +188,19 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
             approval_url = None
 
             links = data.get("links", [])
+            payer_action_url = None
+            approve_url = None
             for link in links:
-                if isinstance(link, dict) and link.get("rel") in ("approve", "payer-action"):
+                if isinstance(link, dict):
+                    rel = link.get("rel")
                     href = link.get("href")
                     if isinstance(href, str) and _validate_approval_url(href):
-                        approval_url = href
-                        break
+                        if rel == "payer-action":
+                            payer_action_url = href
+                        elif rel == "approve":
+                            approve_url = href
+
+            approval_url = payer_action_url or approve_url
 
             if isinstance(order_id, str) and order_id.strip() and isinstance(approval_url, str) and approval_url:
                 return order_id.strip(), approval_url, None
@@ -240,9 +247,9 @@ def verify_order_status(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]], 
         if response.status_code == 200:
             data = response.json()
             status = data.get("status")
-            if data.get("id") == clean_order_id and status in ("CREATED", "APPROVED", "COMPLETED"):
+            if data.get("id") == clean_order_id and status in ("CREATED", "PAYER_ACTION_REQUIRED", "APPROVED", "COMPLETED"):
                 return True, data, None
-            return False, data, f"Order status is '{status}', expected 'CREATED', 'APPROVED', or 'COMPLETED'."
+            return False, data, f"Order status is '{status}', expected 'CREATED', 'PAYER_ACTION_REQUIRED', 'APPROVED', or 'COMPLETED'."
 
         logger.error("PayPal order verification failed with HTTP status: %d", response.status_code)
         return False, None, f"Order verification failed (HTTP {response.status_code})."
@@ -283,6 +290,9 @@ def capture_paypal_order(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]],
     # Step 2: Handle already completed / duplicate capture attempts safely
     if current_status == "COMPLETED" and order_data.get("id") == clean_order_id:
         return True, order_data, None
+
+    if current_status == "PAYER_ACTION_REQUIRED":
+        return False, None, "Cannot capture order with status 'PAYER_ACTION_REQUIRED'. Order requires payer action and must be APPROVED."
 
     if current_status != "APPROVED":
         return False, None, f"Cannot capture order with status '{current_status}'. Order must be APPROVED."
