@@ -139,10 +139,11 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
 
     return_url = os.getenv("PAYPAL_RETURN_URL", "").strip()
     if not return_url or not _validate_return_cancel_url(return_url):
-        return_url = "https://example.com/return"
+        return None, None, "Invalid or missing PAYPAL_RETURN_URL configuration."
+
     cancel_url = os.getenv("PAYPAL_CANCEL_URL", "").strip()
     if not cancel_url or not _validate_return_cancel_url(cancel_url):
-        cancel_url = "https://example.com/cancel"
+        return None, None, "Invalid or missing PAYPAL_CANCEL_URL configuration."
 
     token = _get_access_token()
     if not token:
@@ -207,7 +208,20 @@ def create_paypal_order(item_title: str, price: Any, currency: str, product_id: 
 
             return None, None, "PayPal order response missing valid ID or verified approval URL."
 
-        logger.error("PayPal order creation failed with HTTP status: %d", response.status_code)
+        err_name, err_msg, debug_id = "UNKNOWN", "", ""
+        try:
+            err_json = response.json()
+            if isinstance(err_json, dict):
+                err_name = err_json.get("name", "UNKNOWN")
+                err_msg = err_json.get("message", "")
+                debug_id = err_json.get("debug_id", "")
+        except Exception:
+            pass
+
+        logger.error(
+            "PayPal order creation failed: HTTP status=%d, name=%s, message=%s, debug_id=%s",
+            response.status_code, err_name, err_msg, debug_id
+        )
         return None, None, f"PayPal order creation failed (HTTP {response.status_code})."
 
     except requests.exceptions.Timeout:
@@ -330,7 +344,20 @@ def capture_paypal_order(order_id: str) -> Tuple[bool, Optional[Dict[Any, Any]],
                 ):
                     return True, data, None
 
-        logger.error("PayPal order capture failed or unverified with HTTP status: %d", response.status_code)
+        err_name, err_msg, debug_id = "UNKNOWN", "", ""
+        try:
+            err_json = response.json()
+            if isinstance(err_json, dict):
+                err_name = err_json.get("name", "UNKNOWN")
+                err_msg = err_json.get("message", "")
+                debug_id = err_json.get("debug_id", "")
+        except Exception:
+            pass
+
+        logger.error(
+            "PayPal order capture failed or unverified: HTTP status=%d, name=%s, message=%s, debug_id=%s",
+            response.status_code, err_name, err_msg, debug_id
+        )
         return False, None, f"Order capture verification failed (HTTP {response.status_code})."
 
     except requests.exceptions.Timeout:
