@@ -37,6 +37,12 @@ Gemini natural-language query enhancement and PayPal Sandbox checkout integratio
    - `PAYPAL_ENVIRONMENT=sandbox`
 4. Run the Streamlit application: `streamlit run app.py`.
 
+## PayPal Sandbox Configuration Update (October 23, 2026)
+
+- On October 23, 2026, the project switched to newly created US Sandbox Personal and Business accounts, created a new REST app linked to the US Business account, and updated `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` in Streamlit Cloud Secrets.
+- `PAYPAL_RETURN_URL` and `PAYPAL_CANCEL_URL` remain `https://paypal-lxnoro-agent.streamlit.app/`.
+- **Security & Status Notice:** Credentials are stored in Streamlit Cloud Secrets and must never be committed to Git. No account emails, client IDs, secrets, tokens, or other sensitive values are included. Note that buyer approval and end-to-end checkout flow remain unresolved and require live validation.
+
 ## Security
 
 Never commit API keys, payment credentials, access tokens, or customer secrets.
