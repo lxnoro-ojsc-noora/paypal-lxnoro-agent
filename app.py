@@ -646,6 +646,8 @@ if st.session_state.search_submitted:
 
                         if order_status == "CREATED":
                             st.warning("⚠️ **Order Status: CREATED** (Awaiting buyer approval). Please click the link below to log into PayPal Sandbox and approve the order. Once approved, return here and click **Verify Order Approval Status**.")
+                        elif order_status == "PAYER_ACTION_REQUIRED":
+                            st.warning("⚠️ **Order Status: PAYER_ACTION_REQUIRED** (Buyer action pending). Please complete the required action in PayPal Sandbox. Once completed, return here and click **Verify Order Approval Status**.")
                         elif order_status == "APPROVED":
                             st.success("✅ **Order Status: APPROVED** by buyer! You may now complete and capture the order.")
                         elif order_status == "COMPLETED":
@@ -662,8 +664,8 @@ if st.session_state.search_submitted:
                                     st.session_state.paypal_order_status = status
                                     if status == "APPROVED":
                                         st.success("Order is now APPROVED! Ready for capture.")
-                                    elif status == "CREATED":
-                                        st.info("Order is still awaiting approval in PayPal Sandbox.")
+                                    elif status in ("CREATED", "PAYER_ACTION_REQUIRED"):
+                                        st.info("Order action or approval is still pending in PayPal Sandbox. Please complete authorization and click verify again.")
                                     elif status == "COMPLETED":
                                         st.success("Order is already COMPLETED.")
                                     st.rerun()
@@ -692,8 +694,8 @@ if st.session_state.search_submitted:
                                             st.rerun()
                                         else:
                                             st.error(c_err or "Order capture verification failed.")
-                                    elif fresh_status == "CREATED":
-                                        st.warning("Cannot capture order: Order is still 'CREATED' (buyer has not approved payment in PayPal Sandbox yet). Please approve the payment via the PayPal link first.")
+                                    elif fresh_status in ("CREATED", "PAYER_ACTION_REQUIRED"):
+                                        st.warning(f"Cannot capture order: Order status is '{fresh_status}' (buyer action or approval pending). Please complete the action in PayPal Sandbox and click **Verify Order Approval Status** first.")
                                     else:
                                         st.error(f"Cannot capture order with status '{fresh_status}'. Order must be APPROVED.")
 
