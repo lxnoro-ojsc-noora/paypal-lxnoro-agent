@@ -308,13 +308,36 @@ try:
     if return_token and isinstance(return_token, str) and return_token.strip():
         clean_token = return_token.strip()
         st.session_state.paypal_order_id = clean_token
-        is_v, v_data, _ = paypal_client.verify_order_status(clean_token)
+        st.session_state.paypal_approval_url = f"https://www.sandbox.paypal.com/checkoutnow?token={clean_token}"
+
+        is_v, v_data, v_err = paypal_client.verify_order_status(clean_token)
         if is_v and v_data:
-            st.session_state.paypal_order_status = v_data.get("status")
-            if not st.session_state.get("paypal_approval_url"):
-                st.session_state.paypal_approval_url = f"https://www.sandbox.paypal.com/checkoutnow?token={clean_token}"
+            fresh_status = v_data.get("status")
+            st.session_state.paypal_order_status = fresh_status
+
+            if fresh_status == "COMPLETED":
+                st.session_state.paypal_capture_data = v_data
+                st.session_state.paypal_auto_captured = True
+            elif fresh_status == "APPROVED":
+                if not st.session_state.get("paypal_auto_captured"):
+                    success, cap_data, c_err = paypal_client.capture_paypal_order(clean_token)
+                    v_ok_cap, v_data_cap, _ = paypal_client.verify_order_status(clean_token)
+                    if success and v_ok_cap and v_data_cap and v_data_cap.get("status") == "COMPLETED" and v_data_cap.get("id") == clean_token:
+                        st.session_state.paypal_order_status = "COMPLETED"
+                        st.session_state.paypal_capture_data = v_data_cap
+                        st.session_state.paypal_auto_captured = True
+                    elif cap_data and isinstance(cap_data, dict) and cap_data.get("status") == "COMPLETED":
+                        st.session_state.paypal_order_status = "COMPLETED"
+                        st.session_state.paypal_capture_data = cap_data
+                        st.session_state.paypal_auto_captured = True
+                    else:
+                        st.session_state.paypal_error_msg = c_err or "Order capture failed upon return from PayPal."
+            else:
+                st.session_state.paypal_error_msg = f"Order status is '{fresh_status}'. Please complete approval via the approval link."
+        else:
+            st.session_state.paypal_error_msg = v_err or "Failed to verify order status upon return from PayPal."
 except Exception:
-    pass
+    st.session_state.paypal_error_msg = "An unexpected error occurred while processing return from PayPal."
 
 
 # --- Hero Header ---
