@@ -1,48 +1,92 @@
 # PayPal LXNORO Agent
 
-An AI-powered shopping assistant that helps users discover products, compare options, approve a selection, and complete checkout through PayPal.
+**Research Center:** LXNORO OJSC  
+**Creator & Copyright:** NOORA AL-MAOLAI  
+
+An AI-powered shopping assistant that helps users discover products, compare options, approve selections, and complete secure checkout through PayPal.
+
+---
+
+## Problem Addressed & Solution
+
+- **Problem:** E-commerce shoppers often face friction navigating fragmented product catalogs and integrating secure, trusted payment gateways without complex checkout overhead.
+- **Solution:** PayPal LXNORO Agent streamlines conversational product discovery via Google Gemini and integrates robust, server-side PayPal Sandbox Orders v2 checkout workflows with strict monetary precision and security safeguards.
+
+---
+
+## Key MVP Features
+
+1. **Conversational Query Enhancement:** Natural-language request optimization using Google Gemini Flash-Lite (`gemini-3.1-flash-lite`).
+2. **Catalog Discovery & Filtering:** Real-time product search and catalog integration via the Channel3 API.
+3. **Secure Server-Side PayPal Checkout:** OAuth2 authentication, strict input validation, Decimal monetary precision, strict approval URL domain validation, and server-side order capture verification against PayPal Sandbox endpoints.
+4. **Resilient Error Diagnostics:** Structured logging of PayPal API HTTP status, error name, message, and `debug_id` for troubleshooting.
+
+---
+
+## User Checkout Flow
+
+1. User enters a natural-language shopping request and budget preferences.
+2. App queries the Channel3 product catalog and displays curated results.
+3. User selects a product and initiates checkout.
+4. The backend securely creates a PayPal Sandbox order and generates an approval link (`payer-action` / `approve`).
+5. User completes approval in PayPal Sandbox and returns to the app. (Note: Sandbox test transactions can be verified in PayPal Sandbox Activity; the app currently returns to the order form upon completion).
+
+---
 
 ## Technology Stack
 
-- Python 3.11
-- Streamlit
-- Google Gemini Flash-Lite (`gemini-3.1-flash-lite` via official `google-genai` SDK) for natural-language query enhancement
-- Channel3 API (`https://api.trychannel3.com/v1/search`) for product catalog discovery
-- PayPal Sandbox API (`https://api-m.sandbox.paypal.com`) for test payment checkout flow implementation
-- Git and GitHub for version control
+- **Python 3.11**
+- **Streamlit** (Web UI)
+- **Google GenAI SDK** (`google-genai` for Gemini Flash-Lite)
+- **Requests** (HTTP client for Channel3 & PayPal Sandbox REST APIs)
+- **GitHub Actions** (CI syntax validation)
 
-## Shopping Workflow
+---
 
-1. Capture the user's natural-language shopping request.
-2. Enhance and optimize the search query using Google Gemini Flash-Lite (with automatic fallback to the raw query if unconfigured or unavailable).
-3. Collect the target price range and advanced preferences.
-4. Search and filter the Channel3 product catalog.
-5. Present matching products for manual selection review.
-6. Initiate secure checkout through the official PayPal Sandbox payment flow.
-7. Support server-side order creation, status verification, and order capture against PayPal Sandbox endpoints.
+## Local Setup & Configuration
 
-## Development Status
+1. **Clone the repository and create a virtual environment:**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
+   ```
 
-Gemini natural-language query enhancement and PayPal Sandbox checkout integration have been implemented in the codebase, but end-to-end live testing has not yet been executed in this environment.
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Local Setup
-
-1. Create and activate a Python virtual environment.
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Configure environment variables in `.env` (using `.env.example` as a template):
+3. **Configure environment variables:**
+   Copy `.env.example` to `.env` and configure required keys:
    - `GEMINI_API_KEY`
    - `CHANNEL3_API_KEY`
    - `PAYPAL_CLIENT_ID`
    - `PAYPAL_CLIENT_SECRET`
    - `PAYPAL_ENVIRONMENT=sandbox`
-4. Run the Streamlit application: `streamlit run app.py`.
+   - `PAYPAL_RETURN_URL` (Optional / configured for deployment)
+   - `PAYPAL_CANCEL_URL` (Optional / configured for deployment)
 
-## PayPal Sandbox Configuration Update (October 23, 2026)
+4. **Run the Streamlit application locally:**
+   ```bash
+   streamlit run app.py
+   ```
 
-- On October 23, 2026, the project switched to newly created US Sandbox Personal and Business accounts, created a new REST app linked to the US Business account, and updated `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` in Streamlit Cloud Secrets.
-- `PAYPAL_RETURN_URL` and `PAYPAL_CANCEL_URL` remain `https://paypal-lxnoro-agent.streamlit.app/`.
-- **Security & Status Notice:** Credentials are stored in Streamlit Cloud Secrets and must never be committed to Git. No account emails, client IDs, secrets, tokens, or other sensitive values are included. Note that buyer approval and end-to-end checkout flow remain unresolved and require live validation.
+---
 
-## Security
+## Testing & Deployment
 
-Never commit API keys, payment credentials, access tokens, or customer secrets.
+- **Automated Syntax CI:** Validated via GitHub Actions workflow (`.github/workflows/ci.yml`).
+- **Local Testing:** Unit and integration test suites are included (`test_app_integration.py`, `test_paypal_client.py`, etc.).
+- **Deployment:** Configured for Streamlit Cloud deployment with Streamlit Secrets bridging.
+
+---
+
+## Security Notice
+
+Never commit API keys, payment credentials, access tokens, or customer secrets to version control. Credentials must be managed exclusively via environment variables or secure deployment secrets managers.
+
+---
+
+## License
+
+MIT License — Copyright (c) 2026 NOORA AL-MAOLAI, LXNORO OJSC. See [LICENSE](LICENSE) for details.
