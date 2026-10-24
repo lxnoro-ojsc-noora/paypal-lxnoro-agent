@@ -726,11 +726,37 @@ if st.session_state.search_submitted:
                         if st.session_state.get("paypal_order_status") == "COMPLETED":
                             cap_info = st.session_state.get("paypal_capture_data", {})
                             if cap_info.get("id") == order_id and cap_info.get("status") == "COMPLETED":
-                                st.success("Payment Successful & Verified!")
-                                st.write(f"**Order ID:** `{order_id}`")
+                                captured_val = None
+                                captured_curr = None
+                                try:
+                                    units = cap_info.get("purchase_units", [])
+                                    if units and isinstance(units, list):
+                                        payments = units[0].get("payments", {})
+                                        captures = payments.get("captures", [])
+                                        if captures and isinstance(captures, list):
+                                            amt_obj = captures[0].get("amount", {})
+                                            captured_val = amt_obj.get("value")
+                                            captured_curr = amt_obj.get("currency_code")
+                                except Exception:
+                                    pass
+
+                                display_amount = captured_val if captured_val else f"{dec_price:.2f}"
+                                display_curr = captured_curr if captured_curr else p_curr.upper()
+
+                                st.success("Your order has been completed.")
+                                st.write(f"**Verified PayPal Order ID:** `{order_id}`")
+                                st.write(f"**Captured Amount:** {display_curr} {display_amount}")
                                 st.write("**Status:** COMPLETED (Sandbox Verified)")
                                 st.write(f"**Item:** {p_title}")
-                                st.write(f"**Amount:** {p_curr.upper()} {dec_price:.2f}")
+
+                                if st.button("Start a new purchase", type="secondary"):
+                                    st.session_state.paypal_order_id = None
+                                    st.session_state.paypal_approval_url = None
+                                    st.session_state.paypal_order_status = None
+                                    st.session_state.paypal_capture_data = None
+                                    st.session_state.paypal_auto_captured = None
+                                    st.session_state.paypal_error_msg = None
+                                    st.rerun()
 else:
     # Professional Empty State
     st.markdown(
